@@ -36,7 +36,6 @@
 
       :if ( $foundSignature ) do={
        :if ( $message~"login failure for user" ) do={
-         :put "Found login entry";
          :local len [:len $message];
          :local tokens [:toarray ""];
          :local x 0;
@@ -61,7 +60,6 @@
              :local service [:pick $tokens 8];
              :local reason "";
               :if ( [/user find where name=$login]!="" ) do={
-                 :put "User found $login";
                  :set $reason "wrong password";
               } else={
                  :set $reason "user not found";
@@ -72,7 +70,6 @@
             :if ( [:typeof $attack]="nothing" ) do={
                     :set ($attacks->$ip) ({"count"= 1; "level"= 0});
                     :set $count 1;
-                    :put ($attacks->$ip);
              } else={
                    :set $count ($attack->"count") ;
                    :set $count ($count+1);
