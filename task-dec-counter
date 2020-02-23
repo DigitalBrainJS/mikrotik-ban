@@ -1,0 +1,12 @@
+#run this every 30 minutes
+
+:global attacks;
+
+:if ( [:typeof $attacks] != "nothing" ) do={
+     :foreach attack in=$attacks do={
+          :local count ($attack->"count");
+          :if ( $count > 0 ) do={
+              :set ($attack->"count") ($count - 1);
+          }
+      }
+}

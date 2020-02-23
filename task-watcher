@@ -1,0 +1,115 @@
+#run this every minute
+#/log info "ban watcher started";
+
+:local maxAttempts 7;
+:local maxLevel 10;
+:local listName "BannedList";
+
+:local buffer "memory";
+:local topics "system,error,critical"
+:local foundSignature  false;
+:local time "";
+:global lastTime;
+:global attacks;
+
+:if ( [:typeof $attacks] = "nothing" ) do={
+     /log info "init attack database";
+     :set $attacks ({});
+}
+
+:local rule [/ip firewall filter find dst-address-list=$listName];
+
+:if ([:len $rule]=0)  do={
+     /log info "firewall rule not found. Adding...";
+     /ip firewall filter add chain=forward dst-address-list=$listName comment="rule for $listName" action=reject reject-with=icmp-host-unreachable place-before=0;
+}
+
+:local criticalTopics [/log find where topics=system,error,critical];
+    :foreach entry in=$criticalTopics do={
+      :set time [:tostr [/log get $entry time]];
+      :local message [:tostr [/log get $entry message]];
+      :local data [:toarray $entry]
+
+      :if ( $lastTime="" ) do={
+         :set foundSignature true;
+      }
+
+      :if ( $foundSignature ) do={
+       :if ( $message~"login failure for user" ) do={
+         :put "Found login entry";
+         :local len [:len $message];
+         :local tokens [:toarray ""];
+         :local x 0;
+         :local start 0;
+         :local pos 0;
+
+         :do {
+             :set pos [:tostr [:find $message " " $start]];
+             :if ( $pos="" ) do={
+               :set $pos $len;
+             }
+             :if ( $pos-$start>1 ) do={
+                :local token [:pick $message $start $pos];
+                :set $tokens ($tokens, $token);
+             }
+             :set $start ( $pos+1 );
+         } while ( $pos!="" && $start<$len )
+
+         :if ( [:len $tokens]>0 ) do={
+             :local login [:pick $tokens 4];
+             :local ip [:pick $tokens 6];
+             :local service [:pick $tokens 8];
+             :local reason "";
+              :if ( [/user find where name=$login]!="" ) do={
+                 :put "User found $login";
+                 :set $reason "wrong password";
+              } else={
+                 :set $reason "user not found";
+              }
+            :local attack ($attacks->$ip);
+            :local count 0;
+            :local level ;
+            :if ( [:typeof $attack]="nothing" ) do={
+                    :set ($attacks->$ip) ({"count"= 1; "level"= 0});
+                    :set $count 1;
+                    :put ($attacks->$ip);
+             } else={
+                   :set $count ($attack->"count") ;
+                   :set $count ($count+1);
+                   :set ($attack->"count") ($count);
+            }
+
+        /log warning ("Login attempt (" . ( $count) . "/$maxAttempts)  failed for user '$login' from $ip via $service. Reason: $reason");
+                   :if ( $count>=$maxAttempts ) do={
+                         :set $level ($attack->"level") ;
+                         :set ($attack->"count") (0);
+                         :if ( $level< $maxLevel ) do= {
+                             :set ($attack->"level") ($level + 1);
+                          }
+                         :local banTime (60 * $level * $level * $level);
+                         :if ( $banTime=0 ) do={
+                             :set $banTime 1;
+                         }
+                         if ( [:len [/ip firewall address-list find address=$ip list=$listName]] =0 ) do={
+                           /log error ("$ip added to banned list for " . $banTime . "m. Escalation level: $level ");
+                           /ip firewall address-list add list=$listName address=$ip timeout=($banTime * 60);
+                        } else={
+                           /log error "traffic from a banned IP $ip is not blocked by firewall. Failed to ban";
+                        }
+                   }
+         }
+       }
+     }
+      :if ( $time=$lastTime ) do={
+         :set foundSignature true;
+      }
+   }
+
+:if ( !foundSignature ) do={
+  :set $lastTime  "";
+}
+
+:if ( $time!="" && $lastTime!=$time ) do={
+  :set $lastTime $time;
+}
+

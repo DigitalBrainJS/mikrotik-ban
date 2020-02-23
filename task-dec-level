@@ -1,0 +1,12 @@
+#run this every 24 hours
+
+:global attacks;
+
+:if ( [:typeof $attacks] != "nothing" ) do={
+     :foreach attack in=$attacks do={
+          :local level ($attack->"level");
+          :if ( $level > 0 ) do={
+              :set ($attack->"level") ($level - 1);
+          }
+      }
+}
